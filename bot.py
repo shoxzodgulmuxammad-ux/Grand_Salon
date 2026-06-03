@@ -1,10 +1,12 @@
-import logging
+import os
+import logging                                                                                
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ContextTypes, ConversationHandler
 )
-from config import BOT_TOKEN, OWNER_IDS
+# Diqqat: Bu yerdan BOT_TOKEN importi olib tashlandi, faqat OWNER_IDS qoldi
+from config import OWNER_IDS
 from handlers import (
     start, book_appointment, handle_time_input,
     handle_name, handle_phone, confirm_booking,
@@ -47,6 +49,13 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         await cancel_appointment_prompt(update, context)
 
 def main():
+    # Railway'dagi Variables bo'limidan BOT_TOKEN ni xavfsiz o'qib olish
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+    if not BOT_TOKEN:
+        raise ValueError("Xatolik: Railway Variables ichida BOT_TOKEN topilmadi!")
+
+    # Botni ishga tushirish qismi
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
