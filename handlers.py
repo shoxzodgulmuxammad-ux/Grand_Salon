@@ -279,8 +279,7 @@ async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_
             f"📅 Vaqt: `{readable_time}`\n"
             f"📞 Tel: {a['phone']}\n"
         )
-        # BU YERDAN XATO BUTUNLAY TOZALANDI (to'g'ri holatga keltirildi):
-        keyboard = [[InlineKeyboardButton("❌ Ushbu navbatni o'chirish", callback_data=f"owner_cancel_{a['id']}")]]
+        keyboard = [[InlineKeyboardButton("❌ Ushbu navbatni bekor qilish", callback_data=f"owner_cancel_{a['id']}")]]
         await message_obj.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -305,6 +304,7 @@ async def postpone_appointments(update: Update, context: ContextTypes.DEFAULT_TY
             readable_new = appt['time']
 
         try:
+            # Slesh xatosi to'g'rilandi: \\n o'rniga aniq \n qilindi
             await context.bot.send_message(
                 chat_id=appt["user_id"],
                 text=(
