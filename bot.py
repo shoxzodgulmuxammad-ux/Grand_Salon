@@ -1,11 +1,10 @@
 import os
 import logging                                                                                
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ContextTypes, ConversationHandler
 )
-# Diqqat: Bu yerdan BOT_TOKEN importi olib tashlandi, faqat OWNER_IDS qoldi
 from config import OWNER_IDS
 from handlers import (
     start, book_appointment, handle_time_input,
@@ -28,38 +27,39 @@ logging.basicConfig(
     CANCELLING
 ) = range(5)
 
-# Bosh menyu tugmalari (Usta tugmalari) bosilganda ishlaydigan yangi funksiya
+# Matnli xabarlarni tekshirish (Regex o'rniga oddiy va aniq usul)
 async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
     if text == "🔄 Navbatlar":
         await show_appointments_owner(update, context)
-        
     elif text == "⏳ Kechiktirish":
         await postpone_appointments(update, context)
-        
     elif text == "📊 Statistika":
         await show_stats(update, context)
-        
     elif text == "❌ Bekor qilish":
         await cancel_appointment_prompt(update, context)
+    
+    # MIJOZ TUGMALARI UCHUN:
+    elif text == "✂️ Navbat olish":
+        return await book_appointment(update, context)
+    elif text == "❌ Navbatni bekor qilish":
+        return await cancel_appointment_prompt(update, context)
 
 def main():
-    # Railway'dagi Variables bo'limidan BOT_TOKEN ni xavfsiz o'qib olish
     BOT_TOKEN = os.getenv("BOT_TOKEN")
 
     if not BOT_TOKEN:
         raise ValueError("Xatolik: Railway Variables ichida BOT_TOKEN topilmadi!")
 
-    # Botni ishga tushirish qismi
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # --- NAVBAT OLISH TIZIMI (Mijoz uchun) ---
+    # --- MIJOZ NAVBAT OLISH ---
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(book_appointment, pattern="^book$"),
-            # YANGA QO'SHILDI: Pastdagi panel tugmasi bosilganda ham navbat olish boshlanadi
-            MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex("^✂️ Navbat olish$"), book_appointment)
+            # Bu yerda faqat TEXT xabarni o'tkazamiz, tekshirishni yuqoridagi funksiya bajaradi
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons) 
         ],
         states={
             SELECTING_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time_input)],
@@ -70,12 +70,11 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_conv)],
     )
 
-    # --- NAVBATNI BEKOR QILISH TIZIMI (Mijoz uchun) ---
+    # --- MIJOZ BEKOR QILISH ---
     cancel_conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(cancel_appointment_prompt, pattern="^cancel_my$"),
-            # YANGA QO'SHILDI: Pastdagi panel tugmasi bosilganda bekor qilish boshlanadi
-            MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex("^❌ Navbatni bekor qilish$"), cancel_appointment_prompt)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons)
         ],
         states={
             CANCELLING: [MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_appointment)],
@@ -87,11 +86,8 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(cancel_conv_handler)
     
-    # Usta menyusi tugmalari (Panel) uchun handler
-    app.add_handler(MessageHandler(
-        filters.Text(["🔄 Navbatlar", "⏳ Kechiktirish", "📊 Statistika", "❌ Bekor qilish"]), 
-        handle_menu_buttons
-    ))
+    # Usta menyusi uchun umumiy filtr
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons))
 
     app.add_handler(CallbackQueryHandler(show_appointments_owner, pattern="^owner_list$"))
     app.add_handler(CallbackQueryHandler(postpone_appointments, pattern="^postpone_all$"))
