@@ -52,6 +52,13 @@ def cancel_appointment_by_id(appt_id: int):
             break
     _save(appts)
 
+# YANGI QO'SHILDI: Bazadan butunlay o'chirish funksiyasi
+def delete_appointment_by_id(appt_id: int):
+    appts = _load()
+    # Navbatni ro'yxatdan butunlay olib tashlaymiz
+    appts = [a for a in appts if a["id"] != appt_id]
+    _save(appts)
+
 def get_user_appointments(user_id: int):
     return [a for a in _load() if a["user_id"] == user_id and a["status"] == "active"]
 
@@ -63,7 +70,6 @@ def postpone_all_to_tomorrow():
     for a in appts:
         if a["status"] == "active":
             try:
-                # Vaqtni parse qilish: "2025-01-15 14:00" formatida
                 dt = datetime.strptime(a["time"], "%Y-%m-%d %H:%M")
                 new_dt = dt + timedelta(days=1)
                 old_time = a["time"]

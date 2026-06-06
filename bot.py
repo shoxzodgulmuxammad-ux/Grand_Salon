@@ -27,25 +27,31 @@ logging.basicConfig(
     CANCELLING
 ) = range(5)
 
-# Bosh menyu tugmalari (Faqat usta uchun)
+# Bosh menyu tugmalari (Faqat usta/owner uchun)
 async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    user_id = update.effective_user.id
 
-    if text == "🔄 Navbatlar":
-        await show_appointments_owner(update, context)
-    elif text == "⏳ Kechiktirish":
-        await postpone_appointments(update, context)
-    elif text == "📊 Statistika":
-        await show_stats(update, context)
-    elif text == "❌ Bekor qilish":
-        await cancel_appointment_prompt(update, context)
+    if user_id in OWNER_IDS:
+        if text == "🔄 Navbatlar":
+            await show_appointments_owner(update, context)
+        elif text == "⏳ Kechiktirish":
+            await postpone_appointments(update, context)
+        elif text == "📊 Statistika":
+            await show_stats(update, context)
+        elif text == "❌ Bekor qilish":
+            await cancel_appointment_prompt(update, context)
 
-# Mijoz paneldagi matnli tugmalarni bosganda ishlaydigan alohida funksiyalar
+# Mijoz tugmalarini bosganda entry bosqichiga to'g'ri o'tkazish
 async def client_start_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await book_appointment(update, context)
+    await book_appointment(update, context)
+    return SELECTING_TIME
 
 async def client_start_cancelling(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await cancel_appointment_prompt(update, context)
+    res = await cancel_appointment_prompt(update, context)
+    if res == ConversationHandler.END:
+        return ConversationHandler.END
+    return CANCELLING
 
 
 def main():
@@ -60,7 +66,6 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(book_appointment, pattern="^book$"),
-            # Aniq matnli filtr, endi xato bermaydi va statusni to'g'ri qaytaradi
             MessageHandler(filters.TEXT & filters.Regex("^✂️ Navbat olish$"), client_start_booking)
         ],
         states={
@@ -89,10 +94,7 @@ def main():
     app.add_handler(cancel_conv_handler)
     
     # Usta menyusi tugmalari uchun handler
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, 
-        handle_menu_buttons
-    ))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons))
 
     app.add_handler(CallbackQueryHandler(show_appointments_owner, pattern="^owner_list$"))
     app.add_handler(CallbackQueryHandler(postpone_appointments, pattern="^postpone_all$"))
