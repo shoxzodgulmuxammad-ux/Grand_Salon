@@ -21,7 +21,7 @@ def get_owner_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_client_keyboard():
-    # Oddiy mijozlar uchun doimiy pastki panel tugmalari
+    # Oddiy mijozlar uchun doimiy pastki panel tugmalari (YANGI QO'SHILDI)
     keyboard = [
         ["✂️ Navbat olish"],
         ["❌ Navbatni bekor qilish"]
@@ -34,7 +34,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_owner = (user_id in OWNER_IDS)
 
     if is_owner:
-        # Usta uchun panel
         all_appts = db.get_all_appointments()
         today = datetime.now().strftime("%Y-%m-%d")
         bugungi = [a for a in all_appts if a["status"] == "active" and a["time"].startswith(today)]
@@ -49,7 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_owner_keyboard()
         )
     else:
-        # Oddiy mijozlar uchun doimiy pastki klaviatura bilan javob berish
+        # Boshqa telefondan kirganda ham shu tugmalar doimiy chiqib turadi!
         await update.message.reply_text(
             "✂️ *Sartarosh botiga xush kelibsiz!*\n\n"
             "Navbat olish yoki mavjud navbatingizni bekor qilish uchun *pastdagi doimiy tugmalardan* foydalaning 👇",
@@ -212,7 +211,6 @@ async def cancel_appointment_prompt(update: Update, context: ContextTypes.DEFAUL
         message_obj = query.message
         user_id = update.effective_user.id
         appts = db.get_user_appointments(user_id)
-        is_owner = False
     else:
         message_obj = update.message
         user_id = update.effective_user.id
@@ -242,8 +240,14 @@ async def cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         query = update.callback_query
         await query.answer()
         appt_id = int(query.data.replace("owner_cancel_", ""))
-        db.cancel_appointment_by_id(appt_id)
-        await query.message.reply_text(f"✅ Navbat #{appt_id} bekor qilindi.")
+        
+        # O'ZGARTIRILDI: Shunchaki status o'zgartirish emas, bazadan butunlay o'chirish funksiyasini chaqiramiz
+        if hasattr(db, 'delete_appointment_by_id'):
+            db.delete_appointment_by_id(appt_id)
+        else:
+            db.cancel_appointment_by_id(appt_id) # Zaxira
+            
+        await query.message.reply_text(f"✅ Navbat #{appt_id} butunlay o'chirildi.")
         return
 
     text = update.message.text.strip()
@@ -268,12 +272,17 @@ async def cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❗ Bu raqamli navbat topilmadi yoki sizga tegishli emas.")
         return CANCELLING
 
-    db.cancel_appointment_by_id(appt_id)
-    await update.message.reply_text(f"✅ Navbat #{appt_id} bekor qilindi.")
-
     appt_info = next(a for a in appts if a["id"] == appt_id)
     dt = datetime.strptime(appt_info["time"], "%Y-%m-%d %H:%M")
     display = dt.strftime("%d.%m %H:%M")
+
+    # O'ZGARTIRILDI: Bazadan butunlay o'chirish
+    if hasattr(db, 'delete_appointment_by_id'):
+        db.delete_appointment_by_id(appt_id)
+    else:
+        db.cancel_appointment_by_id(appt_id)
+
+    await update.message.reply_text(f"✅ Navbat #{appt_id} bekor qilindi va o'chirildi.")
 
     if is_owner:
         try:
