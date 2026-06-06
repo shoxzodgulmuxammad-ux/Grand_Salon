@@ -27,7 +27,7 @@ logging.basicConfig(
     CANCELLING
 ) = range(5)
 
-# Matnli xabarlarni tekshirish (Regex o'rniga oddiy va aniq usul)
+# Bosh menyu tugmalari (Faqat usta uchun)
 async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
@@ -39,12 +39,14 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         await show_stats(update, context)
     elif text == "❌ Bekor qilish":
         await cancel_appointment_prompt(update, context)
-    
-    # MIJOZ TUGMALARI UCHUN:
-    elif text == "✂️ Navbat olish":
-        return await book_appointment(update, context)
-    elif text == "❌ Navbatni bekor qilish":
-        return await cancel_appointment_prompt(update, context)
+
+# Mijoz paneldagi matnli tugmalarni bosganda ishlaydigan alohida funksiyalar
+async def client_start_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await book_appointment(update, context)
+
+async def client_start_cancelling(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await cancel_appointment_prompt(update, context)
+
 
 def main():
     BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -54,12 +56,12 @@ def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # --- MIJOZ NAVBAT OLISH ---
+    # --- NAVBAT OLISH TIZIMI (Mijoz uchun) ---
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(book_appointment, pattern="^book$"),
-            # Bu yerda faqat TEXT xabarni o'tkazamiz, tekshirishni yuqoridagi funksiya bajaradi
-            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons) 
+            # Aniq matnli filtr, endi xato bermaydi va statusni to'g'ri qaytaradi
+            MessageHandler(filters.TEXT & filters.Regex("^✂️ Navbat olish$"), client_start_booking)
         ],
         states={
             SELECTING_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time_input)],
@@ -70,11 +72,11 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_conv)],
     )
 
-    # --- MIJOZ BEKOR QILISH ---
+    # --- NAVBATNI BEKOR QILISH TIZIMI (Mijoz uchun) ---
     cancel_conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(cancel_appointment_prompt, pattern="^cancel_my$"),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons)
+            MessageHandler(filters.TEXT & filters.Regex("^❌ Navbatni bekor qilish$"), client_start_cancelling)
         ],
         states={
             CANCELLING: [MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_appointment)],
@@ -86,8 +88,11 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(cancel_conv_handler)
     
-    # Usta menyusi uchun umumiy filtr
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons))
+    # Usta menyusi tugmalari uchun handler
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND, 
+        handle_menu_buttons
+    ))
 
     app.add_handler(CallbackQueryHandler(show_appointments_owner, pattern="^owner_list$"))
     app.add_handler(CallbackQueryHandler(postpone_appointments, pattern="^postpone_all$"))
