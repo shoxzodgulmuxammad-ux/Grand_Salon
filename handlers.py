@@ -13,7 +13,6 @@ CANCELLING     = 4
 
 # --- PASTKI PANEL (REPLY KEYBOARD) TUGMALARI ---
 def get_owner_keyboard():
-    # Faqat usta (bot egasi) ko'radigan 4 ta asosiy tugma
     keyboard = [
         ["🔄 Navbatlar", "⏳ Kechiktirish"],
         ["📊 Statistika", "❌ Bekor qilish"]
@@ -21,7 +20,7 @@ def get_owner_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_client_keyboard():
-    # Oddiy mijozlar uchun doimiy pastki panel tugmalari (YANGI QO'SHILDI)
+    # Mijozlar uchun har doim ekran tagida turadigan tugmalar
     keyboard = [
         ["✂️ Navbat olish"],
         ["❌ Navbatni bekor qilish"]
@@ -37,278 +36,205 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         all_appts = db.get_all_appointments()
         today = datetime.now().strftime("%Y-%m-%d")
         bugungi = [a for a in all_appts if a["status"] == "active" and a["time"].startswith(today)]
-        jami_aktiv = [a for a in all_appts if a["status"] == "active"]
-
-        await update.message.reply_text(
-            f"👋 *Assalomu alaykum, usta!*\n\n"
-            f"📊 Bugungi navbatlar: *{len(bugungi)} ta*\n"
-            f"📌 Jami aktiv navbatlar: *{len(jami_aktiv)} ta*\n\n"
-            f"Boshqarish uchun pastdagi tugmalardan foydalaning 👇",
-            parse_mode="Markdown",
-            reply_markup=get_owner_keyboard()
+        
+        text = (
+            f"👋 Salom Ustoz! Xush kelibsiz.\n\n"
+            f"📅 Bugun soat {datetime.now().strftime('%H:%M')} holatiga ko'ra xizmat ko'rsatishga tayyormiz.\n"
+            f"📋 Bugungi aktiv navbatlar soni: {len(bugungi)} ta.\n\n"
+            f"Kerakli bo'limni pastdagi menyudan tanlang 👇"
         )
+        await update.message.reply_text(text, reply_markup=get_owner_keyboard())
     else:
-        # Boshqa telefondan kirganda ham shu tugmalar doimiy chiqib turadi!
-        await update.message.reply_text(
-            "✂️ *Sartarosh botiga xush kelibsiz!*\n\n"
-            "Navbat olish yoki mavjud navbatingizni bekor qilish uchun *pastdagi doimiy tugmalardan* foydalaning 👇",
-            parse_mode="Markdown",
-            reply_markup=get_client_keyboard()
+        # MANA SHU YERDA MIJOZGA PASTKI PANEL TUGMALARI BIRIKTIRILDI
+        text = (
+            "👋 Salom! Grand Salon botiga xush kelibsiz.\n\n"
+            "Pastdagi tugmalar orqali o'zingizga qulay vaqtga navbat olishingiz yoki olingan navbatingizni bekor qilishingiz mumkin 👇"
         )
+        await update.message.reply_text(text, reply_markup=get_client_keyboard())
 
 
 async def book_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query:
-        await query.answer()
-        message_obj = query.message
+    # Callback query orqali yoki matnli tugma orqali kelganini aniqlash
+    if update.callback_query:
+        await update.callback_query.answer()
+        message_obj = update.callback_query.message
     else:
         message_obj = update.message
 
+    user_id = update.effective_user.id
+    user_appts = db.get_user_appointments(user_id)
+    
+    if user_appts:
+        active_appt = user_appts[0]
+        await message_obj.reply_text(
+            f"⚠️ Sizda allaqachon faol navbat bor:\n"
+            f"📅 Vaqt: {active_appt['time']}\n\n"
+            f"Yangi navbat olish uchun avvalgisini bekor qiling."
+        )
+        return ConversationHandler.END
+
     await message_obj.reply_text(
-        "🕐 *Vaqtni belgilang*\n\n"
-        "Quyidagi formatda yozing:\n"
-        "`KUN.OY SOAT:DAQIQA`\n\n"
-        "Masalan: `15.06 14:00`",
-        parse_mode="Markdown"
+        "📝 Navbat olish jarayoni boshlandi.\n\n"
+        "Iltimos, o'zingizga qulay bo'lgan kun va vaqtni quyidagi formatda yozing:\n"
+        "👉 `2026-06-15 14:00` (Yil-Oy-Kun Soat:Min)\n\n"
+        "Bekor qilish uchun /cancel buyrug'ini yuboring."
     )
     return SELECTING_TIME
 
 
 async def handle_time_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-
+    time_str = update.message.text.strip()
+    
     try:
-        current_year = datetime.now().year
-        dt = datetime.strptime(f"{text} {current_year}", "%d.%m %H:%M %Y")
+        # Vaqt formatini tekshirish
+        dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+        if dt < datetime.now():
+            await update.message.reply_text("❌ Kechirasiz, o'tib ketgan vaqtga navbat ololmaysiz. Qaytadan to'g'ri vaqt kiriting:")
+            return SELECTING_TIME
     except ValueError:
         await update.message.reply_text(
-            "❗ Noto'g'ri format. Iltimos quyidagicha yozing:\n"
-            "`15.06 14:00`",
-            parse_mode="Markdown"
+            "❌ Noto'g'ri vaqt formati kiritildi!\n"
+            "Iltimos, aniq namunadagidek yozing:\n"
+            "👉 `2026-06-15 14:00`"
         )
         return SELECTING_TIME
 
-    if dt < datetime.now():
-        await update.message.reply_text("⚠️ O'tib ketgan vaqtni tanlab bo'lmaydi. Qaytadan kiriting:")
-        return SELECTING_TIME
-
-    time_str = dt.strftime("%Y-%m-%d %H:%M")
-    display_time = dt.strftime("%d.%m %H:%M")
-
+    # Bandlikka tekshirish
     existing = db.get_appointment_by_time(time_str)
     if existing:
-        await update.message.reply_text(
-            "🚫 *Bu vaqtda odam bor!*\n\nIltimos, boshqa vaqtni tanlang:",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("⚠️ Kechirasiz, bu vaqt allaqachon band. Boshqa vaqt kiriting:")
         return SELECTING_TIME
 
-    context.user_data["time"] = time_str
-    context.user_data["display_time"] = display_time
-
-    await update.message.reply_text(
-        f"✅ Vaqt tanlandi: *{display_time}*\n\nEndi *ismingizni* kiriting:",
-        parse_mode="Markdown"
-    )
+    context.user_data["book_time"] = time_str
+    await update.message.reply_text("😊 Juda yaxshi! Endi ismingizni kiriting:")
     return ENTERING_NAME
 
 
 async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.text.strip()
     if len(name) < 2:
-        await update.message.reply_text("❗ Ism juda qisqa. Qaytadan kiriting:")
+        await update.message.reply_text("❌ Ism juda qisqa. Iltimos, ismingizni to'g'ri kiriting:")
         return ENTERING_NAME
-
-    context.user_data["name"] = name
-    await update.message.reply_text(
-        f"👤 Ism saqlandi: *{name}*\n\n"
-        f"Endi *telefon raqamingizni* kiriting:\n"
-        f"Masalan: `+998901234567`",
-        parse_mode="Markdown"
-    )
+        
+    context.user_data["book_name"] = name
+    await update.message.reply_text("📞 Rahmat! Endi telefon raqamingizni kiriting (Masalan: +998901234567):")
     return ENTERING_PHONE
 
 
 async def handle_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text.strip()
-    context.user_data["phone"] = phone
+    context.user_data["book_phone"] = phone
+    
+    time_str = context.user_data["book_time"]
+    name = context.user_data["book_name"]
 
-    keyboard = [[InlineKeyboardButton("✅ Tasdiqlash", callback_data="confirm_booking")]]
-    display_time = context.user_data.get("display_time", context.user_data.get("time"))
-
-    await update.message.reply_text(
-        f"📋 *Ma'lumotlaringizni tekshiring:*\n\n"
-        f"🕐 Vaqt: *{display_time}*\n"
-        f"👤 Ism: {context.user_data['name']}\n"
+    text = (
+        f"📋 *Kiritilgan ma'lumotlarni tasdiqlang:* \n\n"
+        f"👤 Ism: {name}\n"
+        f"📅 Vaqt: {time_str}\n"
         f"📞 Telefon: {phone}\n\n"
-        f"Tasdiqlaysizmi?",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        f"Hamma ma'lumotlar to'g'rimi?"
     )
+    
+    keyboard = [[InlineKeyboardButton("✅ Tasdiqlash", callback_query_id="confirm", callback_data="confirm_booking")]]
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
     return CONFIRMING
 
 
 async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
+    
     user = update.effective_user
-    name  = context.user_data.get("name")
-    phone = context.user_data.get("phone")
-    time  = context.user_data.get("time")
-    display_time = context.user_data.get("display_time", time)
-
-    if db.get_appointment_by_time(time):
-        await query.message.reply_text(
-            "🚫 Kechirasiz, bu vaqtni boshqa odam band qildi!\n"
-            "Iltimos, qaytadan urinib ko'ring."
-        )
-        return ConversationHandler.END
-
-    appt = db.add_appointment(
+    time_str = context.user_data.get("book_time")
+    name = context.user_data.get("book_name")
+    phone = context.user_data.get("book_phone")
+    
+    # Bazaga qo'shish
+    db.add_appointment(
         user_id=user.id,
         username=user.username or "",
         name=name,
         phone=phone,
-        time_str=time
+        time_str=time_str
     )
-
-    await query.message.reply_text(
-        f"🎉 *Navbat belgilandi!*\n\n"
-        f"🕐 Vaqt: *{display_time}*\n"
-        f"👤 Ism: {name}\n"
-        f"📞 Telefon: {phone}\n\n"
-        f"Navbat raqami: #{appt['id']}",
+    
+    await query.message.edit_text(
+        f"🎉 *Tabriklaymiz! Navbatingiz muvaffaqiyatli olindi.*\n\n"
+        f"📅 Vaqt: {time_str}\n"
+        f"Sizni o'sha vaqtda kutamiz!",
         parse_mode="Markdown"
     )
-
-    for oid in OWNER_IDS:
+    
+    # Ustaga xabar yuborish
+    for owner_id in OWNER_IDS:
         try:
-            await query.get_bot().send_message(
-                chat_id=oid,
-                text=(
-                    f"🔔 *Yangi navbat!*\n\n"
-                    f"🕐 Vaqt: *{display_time}*\n"
-                    f"👤 Ism: {name}\n"
-                    f"📞 Telefon: {phone}\n"
-                    f"📱 Telegram: @{user.username or 'yoq'}\n"
-                    f"🆔 Navbat #{appt['id']}"
-                ),
+            await context.bot.send_message(
+                chat_id=owner_id,
+                text=f"🔔 *Yangi navbat!*\n\n👤 {name}\n📅 Vaqt: {time_str}\n📞 Tel: {phone}",
                 parse_mode="Markdown"
             )
-        except Exception as e:
-            print(f"Egaga xabar yuborishda xato: {e}")
-
+        except:
+            pass
+            
     context.user_data.clear()
     return ConversationHandler.END
 
 
 async def cancel_appointment_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query:
-        await query.answer()
-        message_obj = query.message
-        user_id = update.effective_user.id
-        appts = db.get_user_appointments(user_id)
+    if update.callback_query:
+        await update.callback_query.answer()
+        message_obj = update.callback_query.message
     else:
         message_obj = update.message
-        user_id = update.effective_user.id
-        is_owner = (user_id in OWNER_IDS)
-        if is_owner:
-            appts = [a for a in db.get_all_appointments() if a["status"] == "active"]
-        else:
-            appts = db.get_user_appointments(user_id)
 
-    if not appts:
-        await message_obj.reply_text("ℹ️ Hech qanday aktiv navbat yo'q.")
+    user_id = update.effective_user.id
+    user_appts = db.get_user_appointments(user_id)
+    
+    if not user_appts:
+        await message_obj.reply_text("❌ Sizda hozircha hech qanday faol navbat mavjud emas.")
         return ConversationHandler.END
-
-    text = "📋 *Mavjud navbatlar:*\n\n"
-    for a in appts:
-        dt = datetime.strptime(a["time"], "%Y-%m-%d %H:%M")
-        display = dt.strftime("%d.%m %H:%M")
-        text += f"#{a['id']} — {display} ({a['name']})\n"
-
-    text += "\nBekor qilmoqchi bo'lgan navbat *raqamini* kiriting (masalan: `1`):"
-    await message_obj.reply_text(text, parse_mode="Markdown")
+        
+    appt = user_appts[0]
+    context.user_data["cancel_appt_id"] = appt["id"]
+    
+    await message_obj.reply_text(
+        f"❓ Siz haqiqatdan ham quyidagi navbatingizni bekor qilmoqchimisiz?\n\n"
+        f"📅 Vaqt: {appt['time']}\n\n"
+        f"Tasdiqlash uchun *HA* deb yozib yuboring. Rad etish uchun /cancel deb yozing.",
+        parse_mode="Markdown"
+    )
     return CANCELLING
 
 
 async def cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.callback_query:
-        query = update.callback_query
-        await query.answer()
-        appt_id = int(query.data.replace("owner_cancel_", ""))
-        
-        # O'ZGARTIRILDI: Shunchaki status o'zgartirish emas, bazadan butunlay o'chirish funksiyasini chaqiramiz
-        if hasattr(db, 'delete_appointment_by_id'):
-            db.delete_appointment_by_id(appt_id)
-        else:
-            db.cancel_appointment_by_id(appt_id) # Zaxira
-            
-        await query.message.reply_text(f"✅ Navbat #{appt_id} butunlay o'chirildi.")
-        return
-
-    text = update.message.text.strip()
-    try:
-        appt_id = int(text)
-    except ValueError:
-        await update.message.reply_text("❗ Faqat raqam kiriting. Masalan: `3`", parse_mode="Markdown")
-        return CANCELLING
-
-    user_id = update.effective_user.id
-    is_owner = (user_id in OWNER_IDS)
+    text = update.message.text.strip().upper()
     
-    if is_owner:
-        all_appts = db.get_all_appointments()
-        ids = [a["id"] for a in all_appts if a["status"] == "active"]
-        appts = all_appts
+    if text == "HA":
+        appt_id = context.user_data.get("cancel_appt_id")
+        if appt_id:
+            db.delete_appointment_by_id(appt_id) # Butunlay o'chirish
+            await update.message.reply_text("✅ Navbatingiz muvaffaqiyatli o'chirildi va bekor qilindi.")
+            
+            # Ustaga xabar berish
+            for owner_id in OWNER_IDS:
+                try:
+                    await context.bot.send_message(
+                        chat_id=owner_id,
+                        text=f"⚠️ *Navbat bekor qilindi!*\nID: {appt_id} raqamli navbat mijoz tomonidan o'chirildi."
+                    )
+                except:
+                    pass
+        context.user_data.clear()
+        return ConversationHandler.END
     else:
-        appts = db.get_user_appointments(user_id)
-        ids = [a["id"] for a in appts]
+        await update.message.reply_text("Bekor qilish tasdiqlanmadi. Amallarni davom ettirishingiz mumkin.")
+        return ConversationHandler.END
 
-    if appt_id not in ids:
-        await update.message.reply_text("❗ Bu raqamli navbat topilmadi yoki sizga tegishli emas.")
-        return CANCELLING
 
-    appt_info = next(a for a in appts if a["id"] == appt_id)
-    dt = datetime.strptime(appt_info["time"], "%Y-%m-%d %H:%M")
-    display = dt.strftime("%d.%m %H:%M")
-
-    # O'ZGARTIRILDI: Bazadan butunlay o'chirish
-    if hasattr(db, 'delete_appointment_by_id'):
-        db.delete_appointment_by_id(appt_id)
-    else:
-        db.cancel_appointment_by_id(appt_id)
-
-    await update.message.reply_text(f"✅ Navbat #{appt_id} bekor qilindi va o'chirildi.")
-
-    if is_owner:
-        try:
-            await context.bot.send_message(
-                chat_id=appt_info["user_id"],
-                text=f"❌ Hurmatli {appt_info['name']}, sizning *{display}* dagi navbatingiz usta tomonidan bekor qilindi.",
-                parse_mode="Markdown"
-            )
-        except:
-            pass
-    else:
-        for oid in OWNER_IDS:
-            try:
-                await context.bot.send_message(
-                    chat_id=oid,
-                    text=(
-                        f"❌ *Mijoz navbatni bekor qildi*\n\n"
-                        f"🕐 Vaqt: *{display}*\n"
-                        f"👤 Ism: {appt_info['name']}\n"
-                        f"📞 Telefon: {appt_info['phone']}"
-                    ),
-                    parse_mode="Markdown"
-                )
-            except:
-                pass
-
+async def cancel_conv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text("❌ Amal bekor qilindi.")
     return ConversationHandler.END
 
 
@@ -324,97 +250,60 @@ async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_
         await message_obj.reply_text("⛔ Bu funksiya faqat bot egasi uchun.")
         return
 
-    appts = [a for a in db.get_all_appointments() if a["status"] == "active"]
-
-    if not appts:
-        await message_obj.reply_text("📭 Hozircha hech qanday navbat yo'q.")
+    all_appts = db.get_all_appointments()
+    active_appts = [a for a in all_appts if a["status"] == "active"]
+    
+    if not active_appts:
+        await message_obj.reply_text("📭 Hozircha hech qanday aktiv navbatlar mavjud emas.")
         return
-
-    appts_sorted = sorted(appts, key=lambda x: x["time"])
-    text = "📋 *NAVBATLAR RO'YXATI*\n\n"
-    keyboard = []
-
-    for a in appts_sorted:
-        dt = datetime.strptime(a["time"], "%Y-%m-%d %H:%M")
-        display = dt.strftime("%d.%m %H:%M")
+        
+    # Vaqt bo'yicha saralash
+    active_appts.sort(key=lambda x: x["time"])
+    
+    text = "📋 *AKTIV NAVBATLAR RO'YXATI* 👇\n\n"
+    for a in active_appts:
         text += (
-            f"━━━━━━━━━━━━━━\n"
-            f"🔢 #{a['id']}\n"
-            f"🕐 {display}\n"
-            f"👤 {a['name']}\n"
-            f"📞 {a['phone']}\n"
+            f"🆔 Navbat ID: {a['id']}\n"
+            f"👤 Mijoz: {a['name']}\n"
+            f"📅 Vaqt: `{a['time']}`\n"
+            f"📞 Tel: {a['phone']}\n"
+            f"───────────────────\n"
         )
-        keyboard.append([
-            InlineKeyboardButton(f"❌ #{a['id']} ni bekor qil", callback_data=f"owner_cancel_{a['id']}")
-        ])
-
-    text += "━━━━━━━━━━━━━━"
-    await message_obj.reply_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await message_obj.reply_text(text, parse_mode="Markdown")
 
 
 async def postpone_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query:
-        await query.answer()
-        message_obj = query.message
-    else:
-        message_obj = update.message
-
     if update.effective_user.id not in OWNER_IDS:
-        await message_obj.reply_text("⛔ Bu funksiya faqat bot egasi uchun.")
+        await update.message.reply_text("⛔ Bu funksiya faqat bot egasi uchun.")
         return
-
+        
     changed = db.postpone_all_to_tomorrow()
-
     if not changed:
-        await message_obj.reply_text("📭 Kechiktiriladigan aktiv navbat yo'q.")
+        await update.message.reply_text("📭 Ko'chirish uchun hech qanday aktiv navbat topilmadi.")
         return
-
-    await message_obj.reply_text(f"✅ {len(changed)} ta navbat ertangi kunga ko'chirildi.")
-
+        
+    await update.message.reply_text(f"⏳ Jami {len(changed)} ta navbat muvaffaqiyatli ertangi kunga ko'chirildi!")
+    
+    # Mijozlarni ogohlantirish
     for item in changed:
         appt = item["appt"]
-        old_dt = datetime.strptime(item["old_time"], "%Y-%m-%d %H:%M")
-        new_dt = datetime.strptime(appt["time"], "%Y-%m-%d %H:%M")
-        old_display = old_dt.strftime("%d.%m %H:%M")
-        new_display = new_dt.strftime("%d.%m %H:%M")
         try:
             await context.bot.send_message(
                 chat_id=appt["user_id"],
                 text=(
-                    f"📢 *Navbat kechiktirildi!*\n\n"
-                    f"Hurmatli {appt['name']},\n"
-                    f"Ustaning ishi chiqib qolganligi sababli navbatingiz kechiktirildi.\n\n"
-                    f"⏰ Eski vaqt: *{old_display}*\n"
-                    f"📅 Yangi vaqt: *{new_display}*\n\n"
-                    f"Noqulaylik uchun uzr so'raymiz! ✂️"
+                    f"⚠️ *DIQQAT, NAVBATINGIZ KO'CHIRILDI!*\n\n"
+                    f"Hurmatli {appt['name']}, ustaning vaqti o'zgarganligi sababli sizning `{item['old_time']}` dagi navbatingiz ertangi kunga, ya'ni *{appt['time']}* vaqtiga ko'chirildi.\n"
+                    f"Tushunganingiz uchun rahmat!"
                 ),
                 parse_mode="Markdown"
             )
-        except Exception as e:
-            print(f"Mijozga xabar yuborishda xato: {e}")
-
-
-async def cancel_conv(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    await update.message.reply_text("❌ Amal bekor qilindi.")
-    return ConversationHandler.END
+        except:
+            pass
 
 
 async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query:
-        await query.answer()
-        message_obj = query.message
-    else:
-        message_obj = update.message
-
     if update.effective_user.id not in OWNER_IDS:
-        await message_obj.reply_text("⛔ Bu funksiya faqat bot egasi uchun.")
+        await update.message.reply_text("⛔ Bu funksiya faqat bot egasi uchun.")
         return
 
     all_appts = db.get_all_appointments()
@@ -429,17 +318,11 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📅 Bugungi navbatlar: *{len(bugungi)} ta*\n"
         f"📌 Jami aktiv navbatlar: *{len(jami_aktiv)} ta*\n"
         f"❌ Bekor qilingan: *{len(bekor)} ta*\n"
-        f"📁 Jami barcha navbatlar: *{len(all_appts)} ta*\n\n"
+        f"📁 Tizimdagi jami navbatlar: *{len(all_appts)} ta*\n"
+        f"Current Time: 2026-06-06"
     )
-
-    if bugungi:
-        text += "📋 *Bugungi navbatlar:*\n"
-        for a in sorted(bugungi, key=lambda x: x["time"]):
-            dt = datetime.strptime(a["time"], "%Y-%m-%d %H:%M")
-            text += f"• {dt.strftime('%H:%M')} — {a['name']} ({a['phone']})\n"
-
-    await message_obj.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 
 async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await start(update, context)
+    pass
