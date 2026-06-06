@@ -79,19 +79,16 @@ async def book_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_time_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     input_str = update.message.text.strip()
-    current_year = datetime.now().year # Bot joriy yilni (2026) o'zi aniqlaydi
+    current_year = datetime.now().year
     
-    # Foydalanuvchi kiritgan "15.06 14:00" ga yilni yashirincha qo'shamiz -> "2026-15.06 14:00"
     full_time_str = f"{current_year}.{input_str}"
     
     try:
-        # Bot ichkarida yilni qo'shib tekshiradi va bazaga chiroyli formatda saqlaydi
         dt = datetime.strptime(full_time_str, "%Y.%d.%m %H:%M")
         if dt < datetime.now():
             await update.message.reply_text("❌ Kechirasiz, o'tib ketgan vaqtga navbat ololmaysiz. Qaytadan to'g'ri vaqt kiriting:")
             return SELECTING_TIME
         
-        # Bazaga standart formatda o'tkazamiz: YYYY-MM-DD HH:MM
         db_ready_time = dt.strftime("%Y-%m-%d %H:%M")
         
     except ValueError:
@@ -107,8 +104,7 @@ async def handle_time_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Kechirasiz, bu vaqt allaqachon band. Boshqa vaqt kiriting:")
         return SELECTING_TIME
 
-    # Tasdiqlash oynasida ko'rinishi uchun chiroyli ko'rinish (yilni ko'rsatmaymiz)
-    context.user_data["display_time"] = dt.strftime("%d.%m.%Y %H:%M")
+    context.user_data["display_time"] = dt.strftime("%d.%m %H:%M")
     context.user_data["book_time"] = db_ready_time
     
     await update.message.reply_text("😊 Juda yaxshi! Endi ismingizni kiriting:")
@@ -204,7 +200,7 @@ async def cancel_appointment_prompt(update: Update, context: ContextTypes.DEFAUL
     
     try:
         dt_obj = datetime.strptime(appt['time'], "%Y-%m-%d %H:%M")
-        readable_time = dt_obj.strftime("%d.%m.%Y %H:%M")
+        readable_time = dt_obj.strftime("%d.%m %H:%M")
     except:
         readable_time = appt['time']
 
@@ -273,7 +269,7 @@ async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_
     for a in active_appts:
         try:
             dt_obj = datetime.strptime(a['time'], "%Y-%m-%d %H:%M")
-            readable_time = dt_obj.strftime("%d.%m.%Y %H:%M")
+            readable_time = dt_obj.strftime("%d.%m %H:%M")
         except:
             readable_time = a['time']
 
@@ -283,8 +279,8 @@ async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_
             f"📅 Vaqt: `{readable_time}`\n"
             f"📞 Tel: {a['phone']}\n"
         )
-        keyboard = [[InlineKeyboardButton("❌ Ushbu navbatni o'chirish", callback_data=f"owner_cancel_{a['id'] balance}")]]
-        # Eslatma: 'balance' so'zi bot.py dagi handlerga mos kelishi uchun saqlandi, u yerda muammo yo'q
+        # BU YERDAN XATO BUTUNLAY TOZALANDI (to'g'ri holatga keltirildi):
+        keyboard = [[InlineKeyboardButton("❌ Ushbu navbatni o'chirish", callback_data=f"owner_cancel_{a['id']}")]]
         await message_obj.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -304,7 +300,7 @@ async def postpone_appointments(update: Update, context: ContextTypes.DEFAULT_TY
         appt = item["appt"]
         try:
             dt_obj = datetime.strptime(appt['time'], "%Y-%m-%d %H:%M")
-            readable_new = dt_obj.strftime("%d.%m.%Y %H:%M")
+            readable_new = dt_obj.strftime("%d.%m %H:%M")
         except:
             readable_new = appt['time']
 
@@ -312,7 +308,7 @@ async def postpone_appointments(update: Update, context: ContextTypes.DEFAULT_TY
             await context.bot.send_message(
                 chat_id=appt["user_id"],
                 text=(
-                    f"⚠️ *DIQQAT, NAVBATINGIZ KO'CHIRILDI!*\\n\\n"
+                    f"⚠️ *DIQQAT, NAVBATINGIZ KO'CHIRILDI!*\n\n"
                     f"Hurmatli {appt['name']}, ustaning vaqti o'zgarganligi sababli sizning navbatingiz ertangi kunga, ya'ni *{readable_new}* vaqtiga ko'chirildi.\n"
                     f"Tushunganingiz uchun rahmat!"
                 ),
