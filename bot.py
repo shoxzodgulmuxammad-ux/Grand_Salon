@@ -40,14 +40,20 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif text == "📊 Statistika":
             await show_stats(update, context)
         elif text == "❌ Bekor qilish":
-            await cancel_appointment_prompt(update, context)
+            # Ustaga tushunarli bo'lishi uchun navbatlar ro'yxatini chiqaradi va o'sha yerdan bekor qilinadi
+            await show_appointments_owner(update, context)
+
+# Mantiqiy uzilishni oldini oluvchi funksiyalar
+async def client_start_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await book_appointment(update, context)
+
+async def client_start_cancelling(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await cancel_appointment_prompt(update, context)
 
 
 def main():
-    BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-    if not BOT_TOKEN:
-        raise ValueError("Xatolik: Railway Variables ichida BOT_TOKEN topilmadi!")
+    # Tokenni birinchi navbatda Railway muhitidan, u bo'lmasa config fayldan oladi
+    BOT_TOKEN = os.getenv("BOT_TOKEN") or "8857688939:AAG-kxwE9MoaJKslr2hfwpDSI2aMQwZnXR8"
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -55,8 +61,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(book_appointment, pattern="^book$"),
-            # To'g'ridan-to'g'ri handlers ichidagi asosiy funksiyaga ulaymiz
-            MessageHandler(filters.TEXT & filters.Regex("^✂️ Navbat olish$"), book_appointment)
+            MessageHandler(filters.TEXT & filters.Regex("^✂️ Navbat olish$"), client_start_booking)
         ],
         states={
             SELECTING_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time_input)],
@@ -64,20 +69,19 @@ def main():
             ENTERING_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_phone)],
             CONFIRMING:     [CallbackQueryHandler(confirm_booking, pattern="^confirm_booking$")],
         },
-        fallbacks=[CommandHandler("cancel", cancel_conv)],
+        fallbacks=[CommandHandler("cancel", cancel_conv), MessageHandler(filters.Regex("^Bekor qilish$"), cancel_conv)],
     )
 
     # --- NAVBATNI BEKOR QILISH TIZIMI (Mijoz uchun) ---
     cancel_conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(cancel_appointment_prompt, pattern="^cancel_my$"),
-            # To'g'ridan-to'g'ri asosiy bekor qilish funksiyasiga ulaymiz
-            MessageHandler(filters.TEXT & filters.Regex("^❌ Navbatni bekor qilish$"), cancel_appointment_prompt)
+            MessageHandler(filters.TEXT & filters.Regex("^❌ Navbatni bekor qilish$"), client_start_cancelling)
         ],
         states={
             CANCELLING: [MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_appointment)],
         },
-        fallbacks=[CommandHandler("cancel", cancel_conv)],
+        fallbacks=[CommandHandler("cancel", cancel_conv), MessageHandler(filters.Regex("^Bekor qilish$"), cancel_conv)],
     )
 
     app.add_handler(CommandHandler("start", start))
