@@ -204,7 +204,6 @@ async def cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if text == "HA":
         appt_id = context.user_data.get("cancel_appt_id")
         if appt_id:
-            # Statistika buzilmasligi uchun butunlay o'chirmaymiz, statusini o'zgartiramiz
             db.cancel_appointment_by_id(appt_id)
             await update.message.reply_text("✅ Navbatingiz muvaffaqiyatli bekor qilindi.")
             
@@ -259,8 +258,8 @@ async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_
             f"📅 Vaqt: `{a['time']}`\n"
             f"📞 Tel: {a['phone']}\n"
         )
-        # Har bir navbat tagiga usta o'chira olishi uchun inline tugma qo'shildi
-        keyboard = [[InlineKeyboardButton("❌ Ushbu navbatni o'chirish", callback_data=f"owner_cancel_{a['id'] balance}")]]
+        # 'balance' so'zi olib tashlandi, sintaktik xato to'g'rilandi
+        keyboard = [[InlineKeyboardButton("❌ Ushbu navbatni o'chirish", callback_data=f"owner_cancel_{a['id']}")]]
         await message_obj.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
