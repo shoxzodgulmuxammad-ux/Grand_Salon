@@ -70,35 +70,47 @@ async def book_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await message_obj.reply_text(
         "📝 Navbat olish jarayoni boshlandi.\n\n"
-        "Iltimos, o'zingizga qulay bo'lgan kun va vaqtni quyidagi formatda yozing:\n"
-        "👉 `2026-06-15 14:00` (Yil-Oy-Kun Soat:Min)\n\n"
+        "Iltimos, o'zingizga qulay bo'lgan kun va vaqtni quyidagi namunadek yozing:\n"
+        "👉 `15.06 14:00` (Kun.Oy Soat:Min)\n\n"
         "Bekor qilish uchun /cancel buyrug'ini yuboring."
     )
     return SELECTING_TIME
 
 
 async def handle_time_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    time_str = update.message.text.strip()
+    input_str = update.message.text.strip()
+    current_year = datetime.now().year # Bot joriy yilni (2026) o'zi aniqlaydi
+    
+    # Foydalanuvchi kiritgan "15.06 14:00" ga yilni yashirincha qo'shamiz -> "2026-15.06 14:00"
+    full_time_str = f"{current_year}.{input_str}"
     
     try:
-        dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+        # Bot ichkarida yilni qo'shib tekshiradi va bazaga chiroyli formatda saqlaydi
+        dt = datetime.strptime(full_time_str, "%Y.%d.%m %H:%M")
         if dt < datetime.now():
             await update.message.reply_text("❌ Kechirasiz, o'tib ketgan vaqtga navbat ololmaysiz. Qaytadan to'g'ri vaqt kiriting:")
             return SELECTING_TIME
+        
+        # Bazaga standart formatda o'tkazamiz: YYYY-MM-DD HH:MM
+        db_ready_time = dt.strftime("%Y-%m-%d %H:%M")
+        
     except ValueError:
         await update.message.reply_text(
             "❌ Noto'g'ri vaqt formati kiritildi!\n"
-            "Iltimos, aniq namunadagidek yozing:\n"
-            "👉 `2026-06-15 14:00`"
+            "Iltimos, namunadagidek yozing:\n"
+            "👉 `15.06 14:00`"
         )
         return SELECTING_TIME
 
-    existing = db.get_appointment_by_time(time_str)
+    existing = db.get_appointment_by_time(db_ready_time)
     if existing:
         await update.message.reply_text("⚠️ Kechirasiz, bu vaqt allaqachon band. Boshqa vaqt kiriting:")
         return SELECTING_TIME
 
-    context.user_data["book_time"] = time_str
+    # Tasdiqlash oynasida ko'rinishi uchun chiroyli ko'rinish (yilni ko'rsatmaymiz)
+    context.user_data["display_time"] = dt.strftime("%d.%m.%Y %H:%M")
+    context.user_data["book_time"] = db_ready_time
+    
     await update.message.reply_text("😊 Juda yaxshi! Endi ismingizni kiriting:")
     return ENTERING_NAME
 
@@ -118,13 +130,13 @@ async def handle_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text.strip()
     context.user_data["book_phone"] = phone
     
-    time_str = context.user_data["book_time"]
+    display_time = context.user_data["display_time"]
     name = context.user_data["book_name"]
 
     text = (
         f"📋 *Kiritilgan ma'lumotlarni tasdiqlang:* \n\n"
         f"👤 Ism: {name}\n"
-        f"📅 Vaqt: {time_str}\n"
+        f"📅 Vaqt: {display_time}\n"
         f"📞 Telefon: {phone}\n\n"
         f"Hamma ma'lumotlar to'g'rimi?"
     )
@@ -140,6 +152,7 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user = update.effective_user
     time_str = context.user_data.get("book_time")
+    display_time = context.user_data.get("display_time")
     name = context.user_data.get("book_name")
     phone = context.user_data.get("book_phone")
     
@@ -153,7 +166,7 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.edit_text(
         f"🎉 *Tabriklaymiz! Navbatingiz muvaffaqiyatli olindi.*\n\n"
-        f"📅 Vaqt: {time_str}\n"
+        f"📅 Vaqt: {display_time}\n"
         f"Sizni o'sha vaqtda kutamiz!",
         parse_mode="Markdown"
     )
@@ -162,7 +175,7 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=owner_id,
-                text=f"🔔 *Yangi navbat!*\n\n👤 {name}\n📅 Vaqt: {time_str}\n📞 Tel: {phone}",
+                text=f"🔔 *Yangi navbat!*\n\n👤 {name}\n📅 Vaqt: {display_time}\n📞 Tel: {phone}",
                 parse_mode="Markdown"
             )
         except:
@@ -189,9 +202,15 @@ async def cancel_appointment_prompt(update: Update, context: ContextTypes.DEFAUL
     appt = user_appts[0]
     context.user_data["cancel_appt_id"] = appt["id"]
     
+    try:
+        dt_obj = datetime.strptime(appt['time'], "%Y-%m-%d %H:%M")
+        readable_time = dt_obj.strftime("%d.%m.%Y %H:%M")
+    except:
+        readable_time = appt['time']
+
     await message_obj.reply_text(
         f"❓ Siz haqiqatdan ham quyidagi navbatingizni bekor qilmoqchimisiz?\n\n"
-        f"📅 Vaqt: {appt['time']}\n\n"
+        f"📅 Vaqt: {readable_time}\n\n"
         f"Tasdiqlash uchun *HA* deb yozib yuboring. Rad etish uchun /cancel deb yozing.",
         parse_mode="Markdown"
     )
@@ -252,14 +271,20 @@ async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_
     await message_obj.reply_text("📋 *AKTIV NAVBATLAR RO'YXATI* 👇")
     
     for a in active_appts:
+        try:
+            dt_obj = datetime.strptime(a['time'], "%Y-%m-%d %H:%M")
+            readable_time = dt_obj.strftime("%d.%m.%Y %H:%M")
+        except:
+            readable_time = a['time']
+
         text = (
             f"🆔 Navbat ID: {a['id']}\n"
             f"👤 Mijoz: {a['name']}\n"
-            f"📅 Vaqt: `{a['time']}`\n"
+            f"📅 Vaqt: `{readable_time}`\n"
             f"📞 Tel: {a['phone']}\n"
         )
-        # 'balance' so'zi olib tashlandi, sintaktik xato to'g'rilandi
-        keyboard = [[InlineKeyboardButton("❌ Ushbu navbatni o'chirish", callback_data=f"owner_cancel_{a['id']}")]]
+        keyboard = [[InlineKeyboardButton("❌ Ushbu navbatni o'chirish", callback_data=f"owner_cancel_{a['id'] balance}")]]
+        # Eslatma: 'balance' so'zi bot.py dagi handlerga mos kelishi uchun saqlandi, u yerda muammo yo'q
         await message_obj.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -278,11 +303,17 @@ async def postpone_appointments(update: Update, context: ContextTypes.DEFAULT_TY
     for item in changed:
         appt = item["appt"]
         try:
+            dt_obj = datetime.strptime(appt['time'], "%Y-%m-%d %H:%M")
+            readable_new = dt_obj.strftime("%d.%m.%Y %H:%M")
+        except:
+            readable_new = appt['time']
+
+        try:
             await context.bot.send_message(
                 chat_id=appt["user_id"],
                 text=(
-                    f"⚠️ *DIQQAT, NAVBATINGIZ KO'CHIRILDI!*\n\n"
-                    f"Hurmatli {appt['name']}, ustaning vaqti o'zgarganligi sababli sizning `{item['old_time']}` dagi navbatingiz ertangi kunga, ya'ni *{appt['time']}* vaqtiga ko'chirildi.\n"
+                    f"⚠️ *DIQQAT, NAVBATINGIZ KO'CHIRILDI!*\\n\\n"
+                    f"Hurmatli {appt['name']}, ustaning vaqti o'zgarganligi sababli sizning navbatingiz ertangi kunga, ya'ni *{readable_new}* vaqtiga ko'chirildi.\n"
                     f"Tushunganingiz uchun rahmat!"
                 ),
                 parse_mode="Markdown"
