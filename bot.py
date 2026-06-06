@@ -28,24 +28,20 @@ logging.basicConfig(
     CANCELLING
 ) = range(5)
 
-# Bosh menyu tugmalari bosilganda ishlaydigan yangi funksiya
+# Bosh menyu tugmalari (Usta tugmalari) bosilganda ishlaydigan yangi funksiya
 async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
     if text == "🔄 Navbatlar":
-        # handlers.py ichidagi mavjud funksiyani chaqiramiz
         await show_appointments_owner(update, context)
         
     elif text == "⏳ Kechiktirish":
-        # handlers.py ichidagi mavjud funksiyani chaqiramiz
         await postpone_appointments(update, context)
         
     elif text == "📊 Statistika":
-        # handlers.py ichidagi mavjud funksiyani chaqiramiz
         await show_stats(update, context)
         
     elif text == "❌ Bekor qilish":
-        # handlers.py ichidagi mavjud funksiyani chaqiramiz
         await cancel_appointment_prompt(update, context)
 
 def main():
@@ -58,8 +54,13 @@ def main():
     # Botni ishga tushirish qismi
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # --- NAVBAT OLISH TIZIMI (Mijoz uchun) ---
     conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(book_appointment, pattern="^book$")],
+        entry_points=[
+            CallbackQueryHandler(book_appointment, pattern="^book$"),
+            # YANGA QO'SHILDI: Pastdagi panel tugmasi bosilganda ham navbat olish boshlanadi
+            MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex("^✂️ Navbat olish$"), book_appointment)
+        ],
         states={
             SELECTING_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time_input)],
             ENTERING_NAME:  [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name)],
@@ -69,8 +70,13 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_conv)],
     )
 
+    # --- NAVBATNI BEKOR QILISH TIZIMI (Mijoz uchun) ---
     cancel_conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(cancel_appointment_prompt, pattern="^cancel_my$")],
+        entry_points=[
+            CallbackQueryHandler(cancel_appointment_prompt, pattern="^cancel_my$"),
+            # YANGA QO'SHILDI: Pastdagi panel tugmasi bosilganda bekor qilish boshlanadi
+            MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex("^❌ Navbatni bekor qilish$"), cancel_appointment_prompt)
+        ],
         states={
             CANCELLING: [MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_appointment)],
         },
@@ -81,7 +87,7 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(cancel_conv_handler)
     
-    # Yangi qo'shilgan matnli tugmalar (Panel) uchun handler
+    # Usta menyusi tugmalari (Panel) uchun handler
     app.add_handler(MessageHandler(
         filters.Text(["🔄 Navbatlar", "⏳ Kechiktirish", "📊 Statistika", "❌ Bekor qilish"]), 
         handle_menu_buttons

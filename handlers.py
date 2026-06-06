@@ -20,12 +20,21 @@ def get_owner_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+def get_client_keyboard():
+    # Oddiy mijozlar uchun doimiy pastki panel tugmalari
+    keyboard = [
+        ["✂️ Navbat olish"],
+        ["❌ Navbatni bekor qilish"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     is_owner = (user_id in OWNER_IDS)
 
     if is_owner:
-        # Usta uchun pastki panelni hamda qo'shimcha ma'lumotni chiqaramiz
+        # Usta uchun panel
         all_appts = db.get_all_appointments()
         today = datetime.now().strftime("%Y-%m-%d")
         bugungi = [a for a in all_appts if a["status"] == "active" and a["time"].startswith(today)]
@@ -40,16 +49,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_owner_keyboard()
         )
     else:
-        # Oddiy mijozlar uchun eski Inline tugmali menyu o'z holicha qoladi
-        keyboard = [
-            [InlineKeyboardButton("✂️ Navbat olish", callback_data="book")],
-            [InlineKeyboardButton("❌ Navbatni bekor qilish", callback_data="cancel_my")],
-        ]
+        # Oddiy mijozlar uchun doimiy pastki klaviatura bilan javob berish
         await update.message.reply_text(
             "✂️ *Sartarosh botiga xush kelibsiz!*\n\n"
-            "Quyidagi amallardan birini tanlang:",
+            "Navbat olish yoki mavjud navbatingizni bekor qilish uchun *pastdagi doimiy tugmalardan* foydalaning 👇",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            reply_markup=get_client_keyboard()
         )
 
 
@@ -130,7 +135,7 @@ async def handle_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text.strip()
     context.user_data["phone"] = phone
 
-    keyboard = [[InlineKeyboardButton("✅ Navbat olish", callback_data="confirm_booking")]]
+    keyboard = [[InlineKeyboardButton("✅ Tasdiqlash", callback_data="confirm_booking")]]
     display_time = context.user_data.get("display_time", context.user_data.get("time"))
 
     await update.message.reply_text(
@@ -158,7 +163,7 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if db.get_appointment_by_time(time):
         await query.message.reply_text(
             "🚫 Kechirasiz, bu vaqtni boshqa odam band qildi!\n"
-            "Iltimos, /start bosing va qaytadan urinib ko'ring."
+            "Iltimos, qaytadan urinib ko'ring."
         )
         return ConversationHandler.END
 
@@ -175,8 +180,7 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🕐 Vaqt: *{display_time}*\n"
         f"👤 Ism: {name}\n"
         f"📞 Telefon: {phone}\n\n"
-        f"Navbat raqami: #{appt['id']}\n\n"
-        f"Navbatni bekor qilish uchun /start bosing.",
+        f"Navbat raqami: #{appt['id']}",
         parse_mode="Markdown"
     )
 
@@ -213,7 +217,6 @@ async def cancel_appointment_prompt(update: Update, context: ContextTypes.DEFAUL
         message_obj = update.message
         user_id = update.effective_user.id
         is_owner = (user_id in OWNER_IDS)
-        # Agar usta panelidan bekor qilmoqchi bo'lsa, barcha aktiv navbatlarni olamiz
         if is_owner:
             appts = [a for a in db.get_all_appointments() if a["status"] == "active"]
         else:
@@ -272,7 +275,6 @@ async def cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     dt = datetime.strptime(appt_info["time"], "%Y-%m-%d %H:%M")
     display = dt.strftime("%d.%m %H:%M")
 
-    # Agar usta bekor qilgan bo'lsa, mijozga xabar beramiz
     if is_owner:
         try:
             await context.bot.send_message(
@@ -283,7 +285,6 @@ async def cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except:
             pass
     else:
-        # Agar mijoz bekor qilgan bo'lsa, ustaga xabar beramiz
         for oid in OWNER_IDS:
             try:
                 await context.bot.send_message(
@@ -391,7 +392,7 @@ async def postpone_appointments(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def cancel_conv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("❌ Amal bekor qilindi. /start bosing.")
+    await update.message.reply_text("❌ Amal bekor qilindi.")
     return ConversationHandler.END
 
 
@@ -432,5 +433,4 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Bu eski funksiya inline bosilganda ishlardi, endi hamma narsa pastki panelda bo'lgani uchun start'ga yo'naltiramiz
     await start(update, context)
