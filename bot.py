@@ -42,17 +42,6 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif text == "❌ Bekor qilish":
             await cancel_appointment_prompt(update, context)
 
-# Mijoz tugmalarini bosganda entry bosqichiga to'g'ri o'tkazish
-async def client_start_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await book_appointment(update, context)
-    return SELECTING_TIME
-
-async def client_start_cancelling(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    res = await cancel_appointment_prompt(update, context)
-    if res == ConversationHandler.END:
-        return ConversationHandler.END
-    return CANCELLING
-
 
 def main():
     BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -66,7 +55,8 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(book_appointment, pattern="^book$"),
-            MessageHandler(filters.TEXT & filters.Regex("^✂️ Navbat olish$"), client_start_booking)
+            # To'g'ridan-to'g'ri handlers ichidagi asosiy funksiyaga ulaymiz
+            MessageHandler(filters.TEXT & filters.Regex("^✂️ Navbat olish$"), book_appointment)
         ],
         states={
             SELECTING_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time_input)],
@@ -81,7 +71,8 @@ def main():
     cancel_conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(cancel_appointment_prompt, pattern="^cancel_my$"),
-            MessageHandler(filters.TEXT & filters.Regex("^❌ Navbatni bekor qilish$"), client_start_cancelling)
+            # To'g'ridan-to'g'ri asosiy bekor qilish funksiyasiga ulaymiz
+            MessageHandler(filters.TEXT & filters.Regex("^❌ Navbatni bekor qilish$"), cancel_appointment_prompt)
         ],
         states={
             CANCELLING: [MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_appointment)],
