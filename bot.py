@@ -19,7 +19,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 (SELECTING_TIME, ENTERING_NAME, ENTERING_PHONE, CONFIRMING) = range(4)
 
-# --- INLINE TUGMALAR (CALLBACK) BOSILISHINI NAZORAT QILUVCHI ASOSIY FUNKSIYA ---
+# --- BARCHA INLINE CALLBACK HARAKATLARINI TUTISH ---
 async def handle_inline_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -27,14 +27,14 @@ async def handle_inline_actions(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data
     user_id = update.effective_user.id
 
-    # 1. USTA NAVBATNI BEKOR QILSA
+    # 1. Usta navbatni inline tugmadan bekor qilsa
     if data.startswith("owner_cancel_"):
         if user_id not in OWNER_IDS: return
         appt_id = int(data.split("_")[-1])
         db.cancel_appointment_by_id(appt_id)
         await query.message.edit_text(f"✅ ID: {appt_id} raqamli navbat usta tomonidan muvaffaqiyatli bekor qilindi.")
         
-    # 2. USTA FAQAT SHU NAVBATNI 1 KUNGA KECHIKTIRSA
+    # 2. Usta bitta navbatni alohida ko'chirsa
     elif data.startswith("owner_postpone_"):
         if user_id not in OWNER_IDS: return
         appt_id = int(data.split("_")[-1])
@@ -49,7 +49,7 @@ async def handle_inline_actions(update: Update, context: ContextTypes.DEFAULT_TY
                 
             await query.message.edit_text(f"⏳ ID: {appt_id} raqamli navbat ertangi kunga ({readable_new}) ko'chirildi.")
             
-            # Faqat o'sha ko'chirilgan mijozning o'ziga ogohlantirish yuborish
+            # Faqat o'sha o'zgargan mijozga xabar yuborish
             try:
                 await context.bot.send_message(
                     chat_id=appt["user_id"],
@@ -61,24 +61,24 @@ async def handle_inline_actions(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await query.message.reply_text("❌ Navbatni ko'chirishda xatolik yuz berdi.")
 
-    # 3. MIJOZ O'Z NAVBATINI INLINE TUGMADAN BEKOR QILSA
+    # 3. Mijoz o'z navbatini inline tugma bilan bekor qilsa
     elif data.startswith("client_cancel_"):
         appt_id = int(data.split("_")[-1])
         db.cancel_appointment_by_id(appt_id)
         await query.message.edit_text("✅ Navbatingiz muvaffaqiyatli bekor qilindi.")
         
-        # Ustaga darhol xabar berish
+        # Ustaga bildirishnoma borishi
         for owner_id in OWNER_IDS:
             try:
                 await context.bot.send_message(
                     chat_id=owner_id,
-                    text=f"⚠️ *Navbat bekor qilindi!*\nID: {appt_id} raqamli navbat mijoz tomonidan inline tugma orqali bekor qilindi."
+                    text=f"⚠️ *Navbat bekor qilindi!*\nID: {appt_id} raqamli navbat mijoz tomonidan o'zi bekor qilindi."
                 )
             except:
                 pass
 
 
-# Ekran ostidagi matnli menyularni boshqarish
+# Ekran ostidagi asosiy menyu tugmalari
 async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
@@ -100,7 +100,7 @@ def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Navbat olish (Mijoz)
+    # Navbat olish muloqoti
     conv_handler = ConversationHandler(
         entry_points=[
             MessageHandler(filters.TEXT & filters.Regex("^✂️ Navbat olish$"), book_appointment)
@@ -117,13 +117,13 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(conv_handler)
     
-    # Matnli pastki panel menyulari
+    # Pastki panel handlerlari
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔄 Navbatlar|📊 Statistika|❌ Navbatlarim / Bekor qilish)$"), handle_menu_buttons))
     
-    # BARCHA INLINE TUGMALARNI USHLAB QOLUVCHI YAGONA HANDLER:
+    # Callback inline tugmalari handleri
     app.add_handler(CallbackQueryHandler(handle_inline_actions, pattern="^(owner_cancel_|owner_postpone_|client_cancel_)"))
 
-    print("✅ Bot yangi inline tizimda muvaffaqiyatli ishga tushdi!")
+    print("✅ Bot xatosiz va inline rejimda ishga tushdi!")
     app.run_polling()
 
 if __name__ == "__main__":

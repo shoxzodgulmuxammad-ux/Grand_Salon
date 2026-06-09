@@ -88,7 +88,6 @@ async def handle_time_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Kechirasiz, bu vaqt allaqachon band. Boshqa vaqt kiriting:")
         return SELECTING_TIME
 
-    context.user_data["display_time"] = dt.strftime("%d.%m %H:%M")
     context.user_data["book_time"] = db_ready_time
     await update.message.reply_text("😊 Juda yaxshi! Endi ismingizni kiriting:")
     return ENTERING_NAME
@@ -107,13 +106,19 @@ async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text.strip()
     context.user_data["book_phone"] = phone
-    display_time = context.user_data["display_time"]
+    time_str = context.user_data["book_time"]
     name = context.user_data["book_name"]
+
+    try:
+        dt_obj = datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+        readable_time = dt_obj.strftime("%d.%m %H:%M")
+    except:
+        readable_time = time_str
 
     text = (
         f"📋 *Kiritilgan ma'lumotlarni tasdiqlang:* \n\n"
         f"👤 Ism: {name}\n"
-        f"📅 Vaqt: {display_time}\n"
+        f"📅 Vaqt: {readable_time}\n"
         f"📞 Telefon: {phone}\n\n"
         f"Hamma ma'lumotlar to'g'rimi?"
     )
@@ -127,23 +132,29 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user = update.effective_user
     time_str = context.user_data.get("book_time")
-    display_time = context.user_data.get("display_time")
     name = context.user_data.get("book_name")
     phone = context.user_data.get("book_phone")
     
     db.add_appointment(user_id=user.id, username=user.username or "", name=name, phone=phone, time_str=time_str)
-    await query.message.edit_text(f"🎉 *Tabriklaymiz! Navbatingiz muvaffaqiyatli olindi.*\n\n📅 Vaqt: {display_time}\nSizni o'sha vaqtda kutamiz!", parse_mode="Markdown")
+    
+    try:
+        dt_obj = datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+        readable_time = dt_obj.strftime("%d.%m %H:%M")
+    except:
+        readable_time = time_str
+
+    await query.message.edit_text(f"🎉 *Tabriklaymiz! Navbatingiz muvaffaqiyatli olindi.*\n\n📅 Vaqt: {readable_time}\nSizni o'sha vaqtda kutamiz!", parse_mode="Markdown")
     
     for owner_id in OWNER_IDS:
         try:
-            await context.bot.send_message(chat_id=owner_id, text=f"🔔 *Yangi navbat!*\n\n👤 {name}\n📅 Vaqt: {display_time}\n📞 Tel: {phone}", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=owner_id, text=f"🔔 *Yangi navbat!*\n\n👤 {name}\n📅 Vaqt: {readable_time}\n📞 Tel: {phone}", parse_mode="Markdown")
         except:
             pass
     context.user_data.clear()
     return ConversationHandler.END
 
 
-# MIJOZ O'Z NAVBATLARINI INLINE TUGMA ORQALI KO'RISHI VA BEKOR QILISHI
+# MIJOZ FAOL NAVBATLARINI INLINE TUGMA BILAN BEKOR QILISHI UCHUN
 async def show_client_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_appts = db.get_user_appointments(user_id)
@@ -168,7 +179,7 @@ async def show_client_appointments(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
-# USTA BARCHA MIJOZLARNI ALOHIDA TUGMALAR BILAN KO'RISHI
+# USTA HAMMA NAVBATLARNI ALOHIDA TUGMALAR BILAN INLINE BOSHQARISHI UCHUN
 async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_obj = update.callback_query.message if update.callback_query else update.message
     if update.effective_user.id not in OWNER_IDS:
@@ -198,7 +209,7 @@ async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_
             f"📞 Tel: {a['phone']}\n"
         )
         
-        # Tugmalar har bir mijoz uchun alohida ulanadi
+        # Tugmalar har bir mijoz uchun butunlay mustaqil ulanadi
         keyboard = [
             [InlineKeyboardButton("❌ Ushbu navbatni bekor qilish", callback_data=f"owner_cancel_{a['id']}")],
             [InlineKeyboardButton("⏳ Faqat shu navbatni ko'chirish (1 kunga)", callback_data=f"owner_postpone_{a['id']}")]
