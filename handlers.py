@@ -10,12 +10,14 @@ ENTERING_PHONE = 2
 CONFIRMING     = 3
 
 def get_owner_keyboard():
+    # Usta uchun faqat kerakli va ishlaydigan tugmalar qoldi
     keyboard = [
         ["🔄 Navbatlar", "📊 Statistika"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_client_keyboard():
+    # Mijoz uchun qulay menyu
     keyboard = [
         ["✂️ Navbat olish"],
         ["❌ Navbatlarim / Bekor qilish"]
@@ -154,7 +156,7 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# MIJOZ FAOL NAVBATLARINI INLINE TUGMA BILAN BEKOR QILISHI UCHUN
+# MIJOZ REYPLY KEYBOARDDAN BOSGANDA INLINE TUGMA CHIQARISH
 async def show_client_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_appts = db.get_user_appointments(user_id)
@@ -175,11 +177,12 @@ async def show_client_appointments(update: Update, context: ContextTypes.DEFAULT
             f"👤 Ism: {appt['name']}\n"
             f"📅 Vaqt: `{readable_time}`\n"
         )
-        keyboard = [[InlineKeyboardButton("❌ Navbatni bekor qilish", callback_data=f"client_cancel_{appt['id']}")]]
+        # BU YERDA HA DEB YOZISHNI SO'RAMAYDI, BOSILISHI BILAN AVTOMATIK BEKOR BO'LADIGAN INLINE TUGMA:
+        keyboard = [[InlineKeyboardButton("❌ Ushbu navbatni bekor qilish", callback_data=f"client_cancel_{appt['id']}")]]
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
-# USTA HAMMA NAVBATLARNI ALOHIDA TUGMALAR BILAN INLINE BOSHQARISHI UCHUN
+# USTA NAVBATLARNI KO'RISHI
 async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_obj = update.callback_query.message if update.callback_query else update.message
     if update.effective_user.id not in OWNER_IDS:
@@ -209,7 +212,6 @@ async def show_appointments_owner(update: Update, context: ContextTypes.DEFAULT_
             f"📞 Tel: {a['phone']}\n"
         )
         
-        # Tugmalar har bir mijoz uchun butunlay mustaqil ulanadi
         keyboard = [
             [InlineKeyboardButton("❌ Ushbu navbatni bekor qilish", callback_data=f"owner_cancel_{a['id']}")],
             [InlineKeyboardButton("⏳ Faqat shu navbatni ko'chirish (1 kunga)", callback_data=f"owner_postpone_{a['id']}")]
