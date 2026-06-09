@@ -27,12 +27,39 @@ async def handle_inline_actions(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data
     user_id = update.effective_user.id
 
-    # 1. Usta navbatni inline tugmadan bekor qilsa
+    # 1. USTA NAVBATNI BEKOR QILSA (Mijozga xabar boradigan qismi qo'shildi)
     if data.startswith("owner_cancel_"):
         if user_id not in OWNER_IDS: return
         appt_id = int(data.split("_")[-1])
+        
+        # O'chirishdan oldin mijozning ma'lumotlarini bazadan olib turamiz
+        all_appts = db.get_all_appointments()
+        target_appt = None
+        for a in all_appts:
+            if a["id"] == appt_id:
+                target_appt = a
+                break
+        
+        # Bazada holatni bekor qilinganga o'zgartiramiz
         db.cancel_appointment_by_id(appt_id)
-        await query.message.edit_text(f"✅ ID: {appt_id} raqamli navbat usta tomonidan muvaffaqiyatli bekor qilindi.")
+        await query.message.edit_text(f"✅ ID: {appt_id} raqamli navbat muvaffaqiyatli bekor qilindi.")
+        
+        # MIJOZGA XABAR YUBORISH QISMI:
+        if target_appt:
+            try:
+                try:
+                    dt_obj = datetime.strptime(target_appt['time'], "%Y-%m-%d %H:%M")
+                    readable_time = dt_obj.strftime("%d.%m %H:%M")
+                except:
+                    readable_time = target_appt['time']
+
+                await context.bot.send_message(
+                    chat_id=target_appt["user_id"],
+                    text=f"❌ *DIQQAT, NAVBATINGIZ BEKOR QILINDI!*\n\nHurmatli {target_appt['name']}, soat *{readable_time}* dagi navbatingiz usta tomonidan bekor qilindi.",
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logging.error(f"Mijozga xabar yuborishda xatolik: {e}")
         
     # 2. Usta bitta navbatni alohida ko'chirsa
     elif data.startswith("owner_postpone_"):
